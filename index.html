@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Girisha - AI Companion</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background: #0b0c10;
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            background-image:
+                radial-gradient(circle at 15% 20%, rgba(236, 72, 153, 0.15) 0%, transparent 45%),
+                radial-gradient(circle at 85% 80%, rgba(139, 92, 246, 0.15) 0%, transparent 45%);
+        }
+
+        .phone-container {
+            width: 380px;
+            height: 720px;
+            background: rgba(20, 22, 32, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 44px;
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(236, 72, 153, 0.1);
+            position: relative;
+        }
+
+        .header {
+            text-align: center;
+            margin-top: 12px;
+        }
+
+        .title {
+            font-size: 26px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            font-size: 13px;
+            margin-top: 6px;
+            padding: 4px 14px;
+            border-radius: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #94a3b8;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #64748b;
+        }
+
+        .status-badge.active .status-dot {
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+        }
+
+        .status-badge.active {
+            color: #34d399;
+            background: rgba(16, 185, 129, 0.1);
+            border-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .avatar-area {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 40px 0;
+        }
+
+        .avatar-glow {
+            position: absolute;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(236, 72, 153, 0.4) 0%, rgba(139, 92, 246, 0.1) 70%, transparent 100%);
+            animation: pulseGlow 3s infinite ease-in-out;
+            opacity: 0.5;
+            transition: opacity 0.5s ease;
+        }
+
+        .avatar-area.calling .avatar-glow {
+            opacity: 1;
+            animation: activePulse 1.5s infinite ease-in-out;
+        }
+
+        @keyframes pulseGlow {
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 0.4;
+            }
+
+            50% {
+                transform: scale(1.15);
+                opacity: 0.7;
+            }
+        }
+
+        @keyframes activePulse {
+            0% {
+                transform: scale(0.95);
+                opacity: 0.6;
+            }
+
+            50% {
+                transform: scale(1.3);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(0.95);
+                opacity: 0.6;
+            }
+        }
+
+        .avatar {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 54px;
+            font-weight: 700;
+            color: white;
+            z-index: 2;
+            box-shadow: 0 15px 35px rgba(236, 72, 153, 0.3);
+            border: 4px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .wave-container {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            height: 36px;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .wave-container.active {
+            opacity: 1;
+        }
+
+        .bar {
+            width: 4px;
+            height: 10px;
+            background: linear-gradient(180deg, #ec4899, #8b5cf6);
+            border-radius: 4px;
+            animation: wave 1.2s infinite ease-in-out;
+        }
+
+        .bar:nth-child(1) {
+            animation-delay: 0.0s;
+        }
+
+        .bar:nth-child(2) {
+            animation-delay: 0.15s;
+        }
+
+        .bar:nth-child(3) {
+            animation-delay: 0.3s;
+        }
+
+        .bar:nth-child(4) {
+            animation-delay: 0.45s;
+        }
+
+        .bar:nth-child(5) {
+            animation-delay: 0.6s;
+        }
+
+        @keyframes wave {
+
+            0%,
+            100% {
+                height: 8px;
+            }
+
+            50% {
+                height: 32px;
+            }
+        }
+
+        .controls {
+            display: flex;
+            gap: 28px;
+            margin-bottom: 20px;
+        }
+
+        .btn-call {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+
+        .btn-start:hover {
+            transform: scale(1.08);
+            box-shadow: 0 12px 30px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            display: none;
+        }
+
+        .btn-stop:hover {
+            transform: scale(1.08);
+            box-shadow: 0 12px 30px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-call svg {
+            width: 30px;
+            height: 30px;
+            fill: currentColor;
+        }
+
+        .footer-info {
+            font-size: 12px;
+            color: #64748b;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="phone-container">
+        <div class="header">
+            <h1 class="title">Girisha</h1>
+            <div class="status-badge" id="statusBadge">
+                <div class="status-dot"></div>
+                <span id="statusText">Disconnected</span>
+            </div>
+        </div>
+
+        <div class="avatar-area" id="avatarArea">
+            <div class="avatar-glow"></div>
+            <div class="avatar">G</div>
+        </div>
+
+        <div class="wave-container" id="waveContainer">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-call btn-start" id="startBtn" onclick="startCall()">
+                <svg viewBox="0 0 24 24">
+                    <path
+                        d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" />
+                </svg>
+            </button>
+            <button class="btn-call btn-stop" id="stopBtn" onclick="stopCall()">
+                <svg viewBox="0 0 24 24">
+                    <path
+                        d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="footer-info">
+            Full Duplex Voice • PC Control Active
+        </div>
+    </div>
+
+    <script>
+        function startCall() {
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'flex';
+            document.getElementById('statusBadge').classList.add('active');
+            document.getElementById('statusText').innerText = 'Connected 🟢';
+            document.getElementById('avatarArea').classList.add('calling');
+            document.getElementById('waveContainer').classList.add('active');
+
+            // Trigger backend call session launch
+            fetch('/api/start_call', { method: 'POST' });
+        }
+
+        function stopCall() {
+            document.getElementById('stopBtn').style.display = 'none';
+            document.getElementById('startBtn').style.display = 'flex';
+            document.getElementById('statusBadge').classList.remove('active');
+            document.getElementById('statusText').innerText = 'Disconnected';
+            document.getElementById('avatarArea').classList.remove('calling');
+            document.getElementById('waveContainer').classList.remove('active');
+
+            fetch('/api/stop_call', { method: 'POST' });
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,31 @@
+# Environment & Dependencies
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+node_modules/
+
+# Local databases & runtime files
+*.db
+*.sqlite3
+*.bak
+z_run_to.txt
+
+# Generated Study Studio HTML & Image artifacts
+study_studio/*.html
+study_studio/*.png
+study_studio/*.jpg
+!study_studio/.gitkeep
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,16 @@
+{
+  "name": "mylife",
+  "version": "1.0.0",
+  "description": "An ultra-realistic, low-latency, full-duplex Speech-to-Speech AI companion named **Girisha**. She talks naturally, expresses emotion, remembers long-term details about you, and can control your Windows PC on request.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^43.4.0"
+  }
+}
