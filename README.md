@@ -59,7 +59,9 @@ cd MyLife
 Open **Command Prompt** or **PowerShell** in the project folder and run:
 ```bash
 pip install -r requirements.txt
+
 or
+
 # Manually download Girisha Core Dependencies
 google-genai>=1.0.0
 sounddevice>=0.5.0
