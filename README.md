@@ -59,6 +59,20 @@ cd MyLife
 Open **Command Prompt** or **PowerShell** in the project folder and run:
 ```bash
 pip install -r requirements.txt
+or
+# Manually download Girisha Core Dependencies
+google-genai>=1.0.0
+sounddevice>=0.5.0
+numpy>=1.24.0
+mss>=9.0.0
+pillow>=10.0.0
+pyautogui>=0.9.54
+pyperclip>=1.8.2
+duckduckgo_search>=7.0.0
+matplotlib>=3.8.0
+fastapi>=0.100.0
+uvicorn>=0.22.0
+websockets>=12.0
 ```
 
 ---
