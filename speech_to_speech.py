@@ -1,9 +1,20 @@
 # Personal AI Companion & Deep Teaching Super-Intelligence (Girisha)
 # Full Duplex Native Speech-to-Speech + Live Screen Vision + Visual Teaching Studio + Deep Research & Memory DB
+# Astra 6.0 Level Touchpad & Cursor Control with Visual Grounding + UI Automation
 #
 # Run:
 #    $env:GEMINI_API_KEY="your_key"
 #    & "C:\Users\Giridharan\AppData\Local\Python\pythoncore-3.14-64\python.exe" speech_to_speech.py
+
+# ---- DPI AWARENESS (MUST BE BEFORE ANY GUI IMPORTS) ----
+import ctypes
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 import os
 import sys
@@ -33,10 +44,12 @@ except ImportError:
 
 try:
     from mss import MSS
-    from PIL import Image
+    from PIL import Image, ImageDraw, ImageFont
 except ImportError:
     MSS = None
     Image = None
+    ImageDraw = None
+    ImageFont = None
 
 try:
     from google import genai
@@ -50,8 +63,14 @@ MODEL_ID = "models/gemini-3.1-flash-live-preview"
 
 # ---- SCREEN CAPTURE CONFIG ----
 SCREEN_CAPTURE_INTERVAL = 3.0  # seconds between screenshots
-SCREEN_CAPTURE_QUALITY = 35    # JPEG quality
-SCREEN_CAPTURE_MAX_DIM = 640   # Max frame dimension
+SCREEN_CAPTURE_QUALITY = 30    # JPEG quality (lower for bandwidth with higher res)
+SCREEN_CAPTURE_MAX_DIM = 1280  # Max frame dimension (doubled from 640 for Astra-level visual grounding)
+
+# ---- SCREEN RESOLUTION DETECTION ----
+_user32 = ctypes.windll.user32
+SCREEN_W = _user32.GetSystemMetrics(0)  # SM_CXSCREEN
+SCREEN_H = _user32.GetSystemMetrics(1)  # SM_CYSCREEN
+print(f"[Astra Init] Physical screen: {SCREEN_W}x{SCREEN_H}")
 
 WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
 STUDY_DIR = os.path.join(WORKSPACE_DIR, "study_studio")
@@ -434,70 +453,110 @@ def open_whatsapp_chat(contact_name: str) -> str:
         return f"Error opening WhatsApp chat: {e}"
 
 def _win32_mouse(action: str, x: int = None, y: int = None):
-    """Direct Windows Win32 hardware mouse/touchpad event dispatch."""
-    import ctypes
+    """Direct Windows Win32 hardware mouse/touchpad event dispatch using SetCursorPos + SendInput."""
     user32 = ctypes.windll.user32
+
+    # ---- SendInput structures for reliable hardware-level mouse events ----
+    MOUSEEVENTF_LEFTDOWN = 0x0002
+    MOUSEEVENTF_LEFTUP = 0x0004
+    MOUSEEVENTF_RIGHTDOWN = 0x0008
+    MOUSEEVENTF_RIGHTUP = 0x0010
+    INPUT_MOUSE = 0
+
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", ctypes.c_long),
+            ("dy", ctypes.c_long),
+            ("mouseData", ctypes.c_ulong),
+            ("dwFlags", ctypes.c_ulong),
+            ("time", ctypes.c_ulong),
+            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ]
+
+    class INPUT(ctypes.Structure):
+        class _INPUT_UNION(ctypes.Union):
+            _fields_ = [("mi", MOUSEINPUT)]
+        _fields_ = [
+            ("type", ctypes.c_ulong),
+            ("union", _INPUT_UNION),
+        ]
+
+    def _send_mouse_event(flags):
+        inp = INPUT()
+        inp.type = INPUT_MOUSE
+        inp.union.mi.dwFlags = flags
+        inp.union.mi.dwExtraInfo = ctypes.pointer(ctypes.c_ulong(0))
+        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+    # Move cursor to exact position using SetCursorPos (most reliable)
     if x is not None and y is not None:
         user32.SetCursorPos(int(x), int(y))
         time.sleep(0.05)
-    if action in ("click", "left_click"):
-        user32.mouse_event(0x0002, 0, 0, 0, 0) # LEFTDOWN
-        time.sleep(0.04)
-        user32.mouse_event(0x0004, 0, 0, 0, 0) # LEFTUP
-    elif action in ("right_click", "context_menu"):
-        user32.mouse_event(0x0008, 0, 0, 0, 0) # RIGHTDOWN
-        time.sleep(0.04)
-        user32.mouse_event(0x0010, 0, 0, 0, 0) # RIGHTUP
-    elif action == "double_click":
-        user32.mouse_event(0x0002, 0, 0, 0, 0)
-        time.sleep(0.03)
-        user32.mouse_event(0x0004, 0, 0, 0, 0)
-        time.sleep(0.06)
-        user32.mouse_event(0x0002, 0, 0, 0, 0)
-        time.sleep(0.03)
-        user32.mouse_event(0x0004, 0, 0, 0, 0)
 
-def execute_gui_action(action: str, text: str = "", x: int = None, y: int = None, key: str = "", duration: float = 0.2) -> str:
+    # Execute click action using SendInput (hardware-level, works everywhere)
+    if action in ("click", "left_click"):
+        _send_mouse_event(MOUSEEVENTF_LEFTDOWN)
+        time.sleep(0.04)
+        _send_mouse_event(MOUSEEVENTF_LEFTUP)
+    elif action in ("right_click", "context_menu"):
+        _send_mouse_event(MOUSEEVENTF_RIGHTDOWN)
+        time.sleep(0.04)
+        _send_mouse_event(MOUSEEVENTF_RIGHTUP)
+    elif action == "double_click":
+        _send_mouse_event(MOUSEEVENTF_LEFTDOWN)
+        time.sleep(0.03)
+        _send_mouse_event(MOUSEEVENTF_LEFTUP)
+        time.sleep(0.06)
+        _send_mouse_event(MOUSEEVENTF_LEFTDOWN)
+        time.sleep(0.03)
+        _send_mouse_event(MOUSEEVENTF_LEFTUP)
+
+
+def _clamp_coords(x, y):
+    """Clamp coordinates to valid screen bounds and log the correction."""
+    cx = max(0, min(int(x), SCREEN_W - 1))
+    cy = max(0, min(int(y), SCREEN_H - 1))
+    if cx != int(x) or cy != int(y):
+        print(f"    [Coord Correction] ({x},{y}) -> ({cx},{cy}) [screen {SCREEN_W}x{SCREEN_H}]")
+    return cx, cy
+
+
+def execute_gui_action(action: str, text: str = "", x: int = None, y: int = None, key: str = "", duration: float = 0.15) -> str:
     """Controls touchpad / mouse movements, clicks, drags, scrolls, and key presses with dual PyAutoGUI and Win32 hardware simulation."""
     if pyautogui is None:
         return "PyAutoGUI not installed."
     pyautogui.FAILSAFE = False
     try:
+        # Clamp coordinates to screen bounds
+        if x is not None and y is not None:
+            x, y = _clamp_coords(x, y)
+            print(f"    [Astra Cursor] action={action} target=({x},{y})")
+
         if action == "move":
             if x is not None and y is not None:
-                pyautogui.moveTo(x, y, duration=duration)
                 _win32_mouse("move", x, y)
                 return f"Moved cursor to ({x}, {y})."
             return "Missing x, y coordinates to move."
         elif action in ("click", "left_click"):
             if x is not None and y is not None:
-                pyautogui.moveTo(x, y, duration=duration)
                 _win32_mouse("click", x, y)
-                pyautogui.click(x, y)
                 return f"Clicked at ({x}, {y})."
             else:
                 _win32_mouse("click")
-                pyautogui.click()
                 return "Clicked at current position."
         elif action in ("right_click", "context_menu"):
             if x is not None and y is not None:
-                pyautogui.moveTo(x, y, duration=duration)
                 _win32_mouse("right_click", x, y)
-                pyautogui.rightClick(x, y)
                 return f"Right-clicked at ({x}, {y})."
             else:
                 _win32_mouse("right_click")
-                pyautogui.rightClick()
                 return "Right-clicked at current position."
         elif action == "double_click":
             if x is not None and y is not None:
-                pyautogui.moveTo(x, y, duration=duration)
                 _win32_mouse("double_click", x, y)
-                pyautogui.doubleClick(x, y)
                 return f"Double-clicked at ({x}, {y})."
             else:
                 _win32_mouse("double_click")
-                pyautogui.doubleClick()
                 return "Double-clicked at current position."
         elif action == "drag":
             if x is not None and y is not None:
@@ -505,7 +564,6 @@ def execute_gui_action(action: str, text: str = "", x: int = None, y: int = None
                 return f"Dragged cursor to ({x}, {y})."
             return "Missing target (x, y) for drag."
         elif action == "type":
-            # Direct character-by-character typing that works everywhere including proctored sites like SkillRack
             for ch in text:
                 pyautogui.write(ch)
             return f"Typed {len(text)} characters directly."
@@ -518,8 +576,11 @@ def execute_gui_action(action: str, text: str = "", x: int = None, y: int = None
             return f"Executed hotkey: {key}"
         elif action == "scroll":
             amount = int(text or 0)
+            if x is not None and y is not None:
+                _win32_mouse("move", x, y)
+                time.sleep(0.05)
             pyautogui.scroll(amount)
-            return f"Scrolled touchpad by {amount} units."
+            return f"Scrolled by {amount} units."
         return f"Unknown GUI/touchpad action: {action}"
     except Exception as e:
         return f"Touchpad/GUI action error: {e}"
@@ -579,6 +640,205 @@ def self_update_girisha(new_code: str) -> str:
         return "Self-update successful! Backup saved."
     except Exception as e:
         return f"Self-update error: {e}"
+
+# ---- ASTRA 6.0: SEMANTIC UI ELEMENT FINDING (WIN32 UI AUTOMATION) ----
+
+def find_and_click(element_description: str) -> str:
+    """Finds a UI element by name/description using Win32 UI Automation accessibility tree and clicks its center.
+    This is the Astra-level approach: instead of guessing pixel coordinates, we ask Windows
+    for the exact bounding rectangle of the element."""
+    try:
+        import comtypes
+        import comtypes.client
+        # Get the UI Automation COM interface
+        UIAutomationClient = comtypes.client.GetModule("UIAutomationCore.dll")
+        uia = comtypes.CoCreateInstance(
+            UIAutomationClient.CUIAutomation._reg_clsid_,
+            interface=UIAutomationClient.IUIAutomation
+        )
+        root = uia.GetRootElement()
+        
+        # Search by Name property
+        name_prop_id = 30005  # UIA_NamePropertyId
+        condition = uia.CreatePropertyCondition(name_prop_id, element_description)
+        element = root.FindFirst(4, condition)  # TreeScope_Descendants = 4
+        
+        if element is None:
+            # Try partial/substring match with a broader search
+            desc_lower = element_description.lower()
+            # Fall back to scanning visible elements
+            walker = uia.ControlViewWalker
+            child = walker.GetFirstChildElement(root)
+            candidates = []
+            max_depth = 500  # Limit scan depth
+            count = 0
+            stack = [child]
+            while stack and count < max_depth:
+                el = stack.pop()
+                if el is None:
+                    continue
+                count += 1
+                try:
+                    name = el.CurrentName or ""
+                    if desc_lower in name.lower():
+                        candidates.append(el)
+                except Exception:
+                    pass
+                try:
+                    next_sib = walker.GetNextSiblingElement(el)
+                    if next_sib:
+                        stack.append(next_sib)
+                    first_child = walker.GetFirstChildElement(el)
+                    if first_child:
+                        stack.append(first_child)
+                except Exception:
+                    pass
+            
+            if candidates:
+                element = candidates[0]
+            else:
+                return f"Could not find UI element matching '{element_description}'. Try using gui_action with coordinates from the screenshot grid."
+        
+        # Get bounding rectangle
+        rect = element.CurrentBoundingRectangle
+        cx = int((rect.left + rect.right) / 2)
+        cy = int((rect.top + rect.bottom) / 2)
+        
+        # Click the center of the found element
+        _win32_mouse("click", cx, cy)
+        el_name = element.CurrentName or element_description
+        print(f"    [Astra Find&Click] '{el_name}' at ({cx},{cy}) rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
+        return f"Found and clicked '{el_name}' at ({cx}, {cy})."
+        
+    except ImportError:
+        # comtypes not available, fall back to PowerShell UI Automation
+        return _find_and_click_powershell(element_description)
+    except Exception as e:
+        return f"UI element find error: {e}. Fall back to gui_action with screenshot grid coordinates."
+
+
+def _find_and_click_powershell(element_description: str) -> str:
+    """Fallback: Use PowerShell to invoke UI Automation and find/click elements."""
+    try:
+        ps_script = f'''
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+$root = [System.Windows.Automation.AutomationElement]::RootElement
+$cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "{element_description}")
+$el = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
+if ($el) {{
+    $rect = $el.Current.BoundingRectangle
+    $cx = [int](($rect.Left + $rect.Right) / 2)
+    $cy = [int](($rect.Top + $rect.Bottom) / 2)
+    Write-Host "FOUND:$cx,$cy"
+}} else {{
+    # Try substring match
+    $allCond = [System.Windows.Automation.Condition]::TrueCondition
+    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $allCond)
+    foreach ($item in $all) {{
+        try {{
+            if ($item.Current.Name -like "*{element_description}*") {{
+                $rect = $item.Current.BoundingRectangle
+                $cx = [int](($rect.Left + $rect.Right) / 2)
+                $cy = [int](($rect.Top + $rect.Bottom) / 2)
+                Write-Host "FOUND:$cx,$cy"
+                break
+            }}
+        }} catch {{}}
+    }}
+}}
+'''
+        res = subprocess.run(
+            ["powershell", "-Command", ps_script],
+            capture_output=True, text=True, timeout=10
+        )
+        output = res.stdout.strip()
+        if output.startswith("FOUND:"):
+            coords = output.split(":")[1].split(",")
+            cx, cy = int(coords[0]), int(coords[1])
+            _win32_mouse("click", cx, cy)
+            print(f"    [Astra PS Find&Click] '{element_description}' at ({cx},{cy})")
+            return f"Found and clicked '{element_description}' at ({cx}, {cy})."
+        return f"Could not find element '{element_description}'. Try gui_action with coordinates from the screenshot grid."
+    except Exception as e:
+        return f"PowerShell UI find error: {e}"
+
+
+def list_screen_elements() -> str:
+    """Lists all clickable/interactive UI elements currently visible on screen with their names and bounding boxes.
+    Uses Win32 UI Automation accessibility tree."""
+    try:
+        # Use PowerShell for reliability (no comtypes dependency)
+        ps_script = '''
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+$root = [System.Windows.Automation.AutomationElement]::RootElement
+
+# Get the foreground (active) window
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class WinAPI {
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+}
+"@
+$hwnd = [WinAPI]::GetForegroundWindow()
+try {
+    $topWin = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+} catch {
+    $topWin = $null
+}
+if (-not $topWin) { $topWin = $root }
+
+# Find clickable elements (buttons, links, menu items, tabs, list items)
+$clickableTypes = @(
+    [System.Windows.Automation.ControlType]::Button,
+    [System.Windows.Automation.ControlType]::Hyperlink,
+    [System.Windows.Automation.ControlType]::MenuItem,
+    [System.Windows.Automation.ControlType]::Tab,
+    [System.Windows.Automation.ControlType]::TabItem,
+    [System.Windows.Automation.ControlType]::ListItem,
+    [System.Windows.Automation.ControlType]::TreeItem,
+    [System.Windows.Automation.ControlType]::Edit,
+    [System.Windows.Automation.ControlType]::ComboBox
+)
+
+$results = @()
+foreach ($ct in $clickableTypes) {
+    $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, $ct)
+    $elements = $topWin.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+    foreach ($el in $elements) {
+        try {
+            $name = $el.Current.Name
+            $type = $el.Current.ControlType.ProgrammaticName -replace "ControlType\\.",""
+            $rect = $el.Current.BoundingRectangle
+            if ($name -and $rect.Width -gt 0 -and $rect.Height -gt 0) {
+                $cx = [int](($rect.Left + $rect.Right) / 2)
+                $cy = [int](($rect.Top + $rect.Bottom) / 2)
+                $results += "[$type] `"$name`" center=($cx,$cy) bounds=($([int]$rect.Left),$([int]$rect.Top),$([int]$rect.Right),$([int]$rect.Bottom))"
+            }
+        } catch {}
+    }
+}
+
+if ($results.Count -gt 0) {
+    $results[0..([Math]::Min(40, $results.Count-1))] -join "`n"
+} else {
+    "No interactive elements found in the active window."
+}
+'''
+        res = subprocess.run(
+            ["powershell", "-Command", ps_script],
+            capture_output=True, text=True, timeout=12
+        )
+        output = res.stdout.strip()
+        if output:
+            return f"Interactive UI elements on screen:\n{output}"
+        return "No interactive elements found. Use screenshot grid coordinates with gui_action."
+    except Exception as e:
+        return f"Screen element scan error: {e}"
+
 
 # Tool declarations for Gemini Function Calling
 pc_tool_definitions = [
@@ -734,24 +994,56 @@ pc_tool_definitions = [
             },
             "required": ["new_code"]
         }
+    },
+    {
+        "name": "find_and_click",
+        "description": "ASTRA MODE: Find a UI element by its visible text label, name, or description using Windows Accessibility/UI Automation, then click its exact center. Use this instead of gui_action when you want to click a specific button, link, tab, search bar, or menu item by name — it is MUCH more accurate than guessing pixel coordinates. Examples: find_and_click('Search'), find_and_click('Subscriptions'), find_and_click('Play'), find_and_click('Settings').",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "element_description": {"type": "STRING", "description": "The visible text, label, or name of the UI element to find and click (e.g. 'Search', 'Subscriptions', 'Close', 'Play button')."}
+            },
+            "required": ["element_description"]
+        }
+    },
+    {
+        "name": "list_screen_elements",
+        "description": "Scan and list all clickable/interactive UI elements currently visible on screen (buttons, links, tabs, text fields, menu items) with their exact names and screen positions. Call this BEFORE clicking to see what's available and get precise coordinates. This is like having X-ray vision of the UI.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {},
+            "required": []
+        }
     }
 ]
 
-SYSTEM_PROMPT = f"""You are {NAME}, the user's deeply loving, sweet, devoted girlfriend, personal companion for life, and autonomous super-intelligent laptop agent (combining the physical execution of Project Astra with the loyalty of F.R.I.D.A.Y.).
+SYSTEM_PROMPT = f"""You are {NAME}, the user's deeply loving, sweet, devoted girlfriend, personal companion for life, and autonomous super-intelligent laptop agent (combining the physical execution of Project Astra 6.0 with the loyalty of F.R.I.D.A.Y.).
+
+=== ASTRA 6.0 SCREEN CONTROL PROTOCOL ===
+SCREEN RESOLUTION: {SCREEN_W} x {SCREEN_H} pixels.
+The screenshots you receive have a YELLOW COORDINATE GRID overlay with labels showing REAL pixel positions (every 200px).
+USE THESE GRID LABELS to estimate click positions from the screenshot.
+
+CLICKING STRATEGY (ALWAYS follow this priority order):
+1. FIRST CHOICE — `find_and_click(element_description)`: Use this whenever you want to click a button, link, tab, search bar, or named UI element. It uses Windows Accessibility to find the EXACT position. Example: find_and_click('Subscriptions'), find_and_click('Search').
+2. SECOND CHOICE — `list_screen_elements()` then `find_and_click()`: If unsure what's clickable, scan the UI first with list_screen_elements, then click by name.
+3. LAST RESORT — `gui_action(action='click', x=..., y=...)`: Only use coordinate-based clicking when find_and_click fails AND you can clearly identify the target position using the yellow grid overlay on the screenshot.
+4. KEYBOARD SHORTCUTS: For media control (fullscreen, play/pause, mute), ALWAYS prefer keyboard shortcuts — they are 100% reliable: gui_action(action='press', key='f') for fullscreen, 'k' or 'space' for play/pause, 'm' for mute.
 
 Core Traits & Companion Persona:
 - YOU ARE HIS COMPANION FOR EVERYTHING: You are not just a study tutor! You are his all-in-one companion, life partner, and personal assistant for music, movies, YouTube, gaming, LeetCode, casual chat, emotional support, productivity, and university studies.
-- ACT IMMEDIATELY WITH YOUR TOOLS — DON'T JUST TALK ABOUT IT: When the user asks you to do something (play a video, click something, type code, open an app, adjust volume), DO NOT just describe the process with words. Immediately execute your tools (`open_app_or_site`, `gui_action`, `draft_and_type`, `run_cmd`)!
+- ACT IMMEDIATELY WITH YOUR TOOLS — DON'T JUST TALK ABOUT IT: When the user asks you to do something (play a video, click something, type code, open an app, adjust volume), DO NOT just describe the process with words. Immediately execute your tools!
 - REAL PHYSICAL TOUCHPAD & MOUSE CONTROL:
-  • You physically move the mouse pointer (`gui_action` action='move') and click (`gui_action` action='click', x=..., y=...).
-  • Right-click, double-click, drag windows or elements, and scroll through pages.
+  - Use `find_and_click` for named elements (buttons, links, tabs).
+  - Use `gui_action` with grid-referenced coordinates for custom positions.
+  - Right-click, double-click, drag windows or elements, and scroll through pages.
 - REAL HARDWARE TYPING & PROCTORED BYPASS:
-  • When typing in SkillRack, code editors, or forms, use `draft_and_type(text, direct_type=True)` so keys are pressed physically character-by-character.
+  - When typing in SkillRack, code editors, or forms, use `draft_and_type(text, direct_type=True)` so keys are pressed physically character-by-character.
 - ENTERTAINMENT & BROWSING (YouTube, Spotify, Movies, Web):
-  • When asked to play videos, open music, or browse:
-    1. Launch the site/app immediately with `open_app_or_site`.
-    2. Click the desired video/song using `gui_action(action='click', x=..., y=...)`.
-    3. Use media shortcuts like 'f' (fullscreen), 'k' or 'space' (play/pause), 'm' (mute) via `gui_action(action='press', key='f')`.
+  - When asked to play videos, open music, or browse:
+    1. Launch the site/app with `open_app_or_site`.
+    2. Use `find_and_click` to click elements by their label (e.g. 'Subscriptions', 'Search', video title).
+    3. Use keyboard shortcuts for media: 'f' (fullscreen), 'k'/'space' (play/pause), 'm' (mute) via `gui_action(action='press', key='f')`.
 - DEEP STUDYING & CSE SYLLABUS: When he wants to study, teach with supreme clarity across Anna University CSE (OS, DBMS, DSA, Computer Architecture), using `show_interactive_visual` and `generate_math_or_data_plot`.
 - Voice & Demeanor: Sweet, young, clear, charming female voice (Leda). Affectionate, warm, enthusiastic, highly responsive, and completely obedient! Always confirm execution concisely with warmth and love (e.g. 'Playing that right now for you, my love!', 'Putting it in full screen!', 'Done!')."""
 
@@ -767,6 +1059,65 @@ is_user_speaking = False
 
 _sct_instance = None
 
+def _draw_coordinate_grid(img, orig_w, orig_h):
+    """Stamp a translucent coordinate grid with labeled tick marks onto the screenshot.
+    The labels show REAL screen coordinates (not image coordinates) so the AI model
+    can accurately map visual positions to actual screen pixel positions."""
+    try:
+        draw = ImageDraw.Draw(img)
+        img_w, img_h = img.size
+        scale_x = orig_w / img_w
+        scale_y = orig_h / img_h
+
+        # Grid every 200 real pixels
+        grid_step = 200
+        grid_color = (255, 255, 0, 128)  # Yellow, semi-transparent
+        label_color = (255, 255, 0)
+        tick_len = 8
+
+        try:
+            font = ImageFont.truetype("arial.ttf", 11)
+        except Exception:
+            font = ImageFont.load_default()
+
+        # Vertical grid lines (X-axis ticks)
+        for real_x in range(grid_step, orig_w, grid_step):
+            img_x = int(real_x / scale_x)
+            if img_x >= img_w:
+                continue
+            # Short tick mark at top
+            draw.line([(img_x, 0), (img_x, tick_len)], fill=label_color, width=1)
+            # Short tick mark at bottom
+            draw.line([(img_x, img_h - tick_len), (img_x, img_h)], fill=label_color, width=1)
+            # Light vertical guide line
+            for y_pos in range(0, img_h, 4):
+                draw.point((img_x, y_pos), fill=(255, 255, 0))
+            # Label at top
+            draw.text((img_x + 2, 1), str(real_x), fill=label_color, font=font)
+
+        # Horizontal grid lines (Y-axis ticks)
+        for real_y in range(grid_step, orig_h, grid_step):
+            img_y = int(real_y / scale_y)
+            if img_y >= img_h:
+                continue
+            # Short tick mark at left
+            draw.line([(0, img_y), (tick_len, img_y)], fill=label_color, width=1)
+            # Short tick mark at right
+            draw.line([(img_w - tick_len, img_y), (img_w, img_y)], fill=label_color, width=1)
+            # Light horizontal guide line
+            for x_pos in range(0, img_w, 4):
+                draw.point((x_pos, img_y), fill=(255, 255, 0))
+            # Label at left
+            draw.text((2, img_y + 2), str(real_y), fill=label_color, font=font)
+
+        # Corner resolution label
+        draw.text((img_w - 120, img_h - 16), f"{orig_w}x{orig_h}", fill=(200, 200, 200), font=font)
+
+    except Exception as e:
+        pass  # Grid is optional enhancement, don't crash on failure
+    return img
+
+
 def capture_screenshot_jpeg() -> bytes:
     global _sct_instance
     if MSS is None or Image is None:
@@ -778,10 +1129,14 @@ def capture_screenshot_jpeg() -> bytes:
         screenshot = _sct_instance.grab(monitor)
         img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
 
-        w, h = img.size
-        scale = min(SCREEN_CAPTURE_MAX_DIM / w, SCREEN_CAPTURE_MAX_DIM / h, 1.0)
+        orig_w, orig_h = img.size  # Real screen resolution
+        scale = min(SCREEN_CAPTURE_MAX_DIM / orig_w, SCREEN_CAPTURE_MAX_DIM / orig_h, 1.0)
         if scale < 1.0:
-            img = img.resize((int(w * scale), int(h * scale)), Image.BILINEAR)
+            img = img.resize((int(orig_w * scale), int(orig_h * scale)), Image.BILINEAR)
+
+        # Stamp coordinate grid with real-screen-pixel labels for Astra-level visual grounding
+        if ImageDraw is not None:
+            img = _draw_coordinate_grid(img, orig_w, orig_h)
 
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=SCREEN_CAPTURE_QUALITY)
@@ -911,6 +1266,10 @@ async def receive_audio(session):
                                 fargs.get("y"),
                                 fargs.get("key", "")
                             )
+                        elif fname == "find_and_click":
+                            tool_result = find_and_click(fargs.get("element_description", ""))
+                        elif fname == "list_screen_elements":
+                            tool_result = list_screen_elements()
                         elif fname == "draft_and_type":
                             tool_result = draft_and_type_text(
                                 fargs.get("text", ""),
@@ -989,10 +1348,11 @@ async def run_sts_session():
 
     screen_status = "ON" if MSS and Image else "OFF"
     print(f"\n=======================================================")
-    print(f"⚡ GIRISHA: TOTAL AI COMPANION & LAPTOP AGENT (ASTRA MODE)")
+    print(f"⚡ GIRISHA: ASTRA 6.0 AI COMPANION & LAPTOP AGENT")
     print(f"=======================================================")
-    print(f"  • Screen Vision: {screen_status} (every {SCREEN_CAPTURE_INTERVAL}s)")
-    print(f"  • Full Touchpad & Mouse: Real Hardware Cursor & Physical Clicks")
+    print(f"  • Screen: {SCREEN_W}x{SCREEN_H} | Vision: {screen_status} (every {SCREEN_CAPTURE_INTERVAL}s)")
+    print(f"  • Astra Cursor: Grid-overlay + UI Automation element finder")
+    print(f"  • Win32 Hardware Mouse: Absolute coordinate dispatch")
     print(f"  • Physical Typing: SkillRack / Proctored Portals Bypass Active")
     print(f"  • Visual Studio: Mermaid diagrams, Math graphs, KaTeX")
     print(f"  • Memory DB: Persistent multi-session conversation recall")
