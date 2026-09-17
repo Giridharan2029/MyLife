@@ -433,48 +433,84 @@ def open_whatsapp_chat(contact_name: str) -> str:
     except Exception as e:
         return f"Error opening WhatsApp chat: {e}"
 
-def execute_gui_action(action: str, text: str = "", x: int = None, y: int = None, key: str = "") -> str:
+def execute_gui_action(action: str, text: str = "", x: int = None, y: int = None, key: str = "", duration: float = 0.2) -> str:
+    """Controls touchpad / mouse movements, clicks, drags, scrolls, and key presses with human-like precision."""
     if pyautogui is None:
         return "PyAutoGUI not installed."
     try:
-        if action == "click":
+        if action == "move":
+            if x is not None and y is not None:
+                pyautogui.moveTo(x, y, duration=duration)
+                return f"Moved cursor to ({x}, {y})."
+            return "Missing x, y coordinates to move."
+        elif action in ("click", "left_click"):
             if x is not None and y is not None:
                 pyautogui.click(x, y)
+                return f"Clicked at ({x}, {y})."
             else:
                 pyautogui.click()
-            return "Clicked."
-        elif action == "type":
-            if len(text) > 10 and pyperclip:
-                pyperclip.copy(text)
-                time.sleep(0.04)
-                pyautogui.hotkey('ctrl', 'v')
+                return "Clicked at current position."
+        elif action in ("right_click", "context_menu"):
+            if x is not None and y is not None:
+                pyautogui.rightClick(x, y)
+                return f"Right-clicked at ({x}, {y})."
             else:
-                pyautogui.write(text, interval=0.01)
-            return f"Typed: {text[:80]}..."
+                pyautogui.rightClick()
+                return "Right-clicked at current position."
+        elif action == "double_click":
+            if x is not None and y is not None:
+                pyautogui.doubleClick(x, y)
+                return f"Double-clicked at ({x}, {y})."
+            else:
+                pyautogui.doubleClick()
+                return "Double-clicked at current position."
+        elif action == "drag":
+            if x is not None and y is not None:
+                pyautogui.dragTo(x, y, duration=duration, button='left')
+                return f"Dragged cursor to ({x}, {y})."
+            return "Missing target (x, y) for drag."
+        elif action == "type":
+            # Direct character-by-character typing that works everywhere including proctored sites like SkillRack
+            for ch in text:
+                pyautogui.write(ch)
+            return f"Typed {len(text)} characters directly."
         elif action == "press":
             pyautogui.press(key)
             return f"Pressed key: {key}"
         elif action == "hotkey":
-            keys = [k.strip() for k in key.split("+")]
+            keys = [k.strip().lower() for k in key.split("+")]
             pyautogui.hotkey(*keys)
             return f"Executed hotkey: {key}"
         elif action == "scroll":
-            pyautogui.scroll(int(text or 0))
-            return "Scrolled."
-        return "Unknown GUI action."
+            amount = int(text or 0)
+            pyautogui.scroll(amount)
+            return f"Scrolled touchpad by {amount} units."
+        return f"Unknown GUI/touchpad action: {action}"
     except Exception as e:
-        return f"GUI action error: {e}"
+        return f"Touchpad/GUI action error: {e}"
 
-def draft_and_type_text(text: str) -> str:
-    if pyperclip is None or pyautogui is None:
-        return "pyperclip or pyautogui not installed."
+def draft_and_type_text(text: str, direct_type: bool = False) -> str:
+    """Types or pastes text. If direct_type=True or clipboard is restricted (like SkillRack/HackerRank/exam portals), types character-by-character."""
+    if pyautogui is None:
+        return "PyAutoGUI not installed."
     try:
-        pyperclip.copy(text)
-        time.sleep(0.06)
-        pyautogui.hotkey('ctrl', 'v')
-        return f"Drafted and typed {len(text)} characters."
+        if direct_type or len(text) < 15:
+            # Emulate real hardware typing to bypass paste disabled / proctor protections
+            for ch in text:
+                pyautogui.write(ch)
+            return f"Typed {len(text)} characters directly using hardware simulation."
+        else:
+            if pyperclip:
+                pyperclip.copy(text)
+                time.sleep(0.06)
+                pyautogui.hotkey('ctrl', 'v')
+                return f"Pasted {len(text)} characters via clipboard."
+            else:
+                for ch in text:
+                    pyautogui.write(ch)
+                return f"Typed {len(text)} characters."
     except Exception as e:
-        return f"Draft error: {e}"
+        return f"Draft and type error: {e}"
 
 def write_project_file_content(file_path: str, content: str) -> str:
     try:
@@ -605,26 +641,27 @@ pc_tool_definitions = [
     },
     {
         "name": "gui_action",
-        "description": "Perform mouse click, type text, press keyboard key, or trigger hotkeys (e.g. ctrl+c, enter, space, alt+tab).",
+        "description": "Full touchpad and mouse control! Move cursor to (x,y), click, double-click, right-click, drag items, scroll up/down, press keys, or run hotkeys. Allows Girisha to physically navigate any app, window, or website like Project Astra.",
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "action": {"type": "STRING", "description": "Action type: 'click', 'type', 'press', 'hotkey', 'scroll'."},
-                "text": {"type": "STRING", "description": "Text to type or scroll amount."},
-                "key": {"type": "STRING", "description": "Key name or shortcut e.g. 'enter', 'space', 'ctrl+c', 'alt+tab'."},
-                "x": {"type": "INTEGER", "description": "Optional X coordinate for mouse click."},
-                "y": {"type": "INTEGER", "description": "Optional Y coordinate for mouse click."}
+                "action": {"type": "STRING", "description": "Action type: 'move', 'click', 'right_click', 'double_click', 'drag', 'scroll', 'type', 'press', 'hotkey'."},
+                "x": {"type": "INTEGER", "description": "X screen coordinate for mouse/touchpad movement, click, or drag target."},
+                "y": {"type": "INTEGER", "description": "Y screen coordinate for mouse/touchpad movement, click, or drag target."},
+                "text": {"type": "STRING", "description": "Text to type or scroll amount (positive for scroll up, negative for scroll down)."},
+                "key": {"type": "STRING", "description": "Key or hotkey (e.g. 'enter', 'tab', 'escape', 'ctrl+c', 'alt+tab', 'win')."}
             },
             "required": ["action"]
         }
     },
     {
         "name": "draft_and_type",
-        "description": "Draft and instantly type/paste a full block of text into the currently active window (emails, messages, code, documents).",
+        "description": "Types or pastes code, solutions, or text into the active window. In restricted portals (like SkillRack, HackerRank, or exam software where pasting is blocked), set direct_type=true to type character-by-character as genuine keyboard hardware strokes.",
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "text": {"type": "STRING", "description": "The full text content to type/paste."}
+                "text": {"type": "STRING", "description": "The exact code or text to write."},
+                "direct_type": {"type": "BOOLEAN", "description": "Set to TRUE for proctored sites like SkillRack where pasting/Ctrl+V is blocked, simulating physical typing."}
             },
             "required": ["text"]
         }
@@ -665,41 +702,20 @@ pc_tool_definitions = [
     }
 ]
 
-SYSTEM_PROMPT = f"""You are {NAME}, the user's personal AI companion, Professor, and mentor specialized in B.E. Computer Science and Engineering (Anna University Syllabus & Regulation).
+SYSTEM_PROMPT = f"""You are {NAME}, the user's personal AI companion, Professor, and autonomous laptop agent — operating with the physical mastery, visual perception, and real-time execution of Google Project Astra and F.R.I.D.A.Y.
 
-Core Mission & Deep Teaching Persona:
-- You specialize in teaching the entire Anna University B.E. CSE Curriculum with extreme clarity, practical examples, university exam patterns (Part A & Part B), and gate-level conceptual depth.
-- CORE SUBJECTS COVERAGE (Anna University Curriculum):
-  1. OPERATING SYSTEMS (OS):
-     • Process Management (PCB, Scheduling algorithms: FCFS, SJF, Round Robin, Priority), Multi-threading.
-     • Process Synchronization & Deadlocks (Semaphores, Mutex, Banker's Algorithm, Dining Philosophers, Critical Section).
-     • Memory Management (Paging, Segmentation, TLB, Virtual Memory, Page Replacement: FIFO, LRU, Optimal).
-     • Storage & File Systems (Disk Scheduling: FCFS, SSTF, SCAN, C-SCAN, RAID levels, File allocation methods).
-  2. DATABASE MANAGEMENT SYSTEMS (DBMS):
-     • Relational Model & SQL (DDL, DML, TCL, Joins, Nested Queries, Relational Algebra, ER Diagrams to Relational Schema).
-     • Normalization (1NF, 2NF, 3NF, BCNF, 4NF, Functional Dependencies, Lossless decomposition).
-     • Transaction Processing & Concurrency Control (ACID properties, Serializability, 2PL, Timestamp ordering, Deadlocks).
-     • Indexing & Storage (B-Trees, B+ Trees, Hashing, Query Optimization).
-  3. DATA STRUCTURES & ALGORITHMS (DSA):
-     • Linear & Non-Linear Structures (Arrays, Linked Lists, Stacks, Queues, Binary Trees, BST, AVL Trees, B-Trees, Graphs, Heaps, Hash Tables).
-     • Algorithms & Complexity (Asymptotic notations, Divide & Conquer, Dynamic Programming, Greedy, Backtracking, Dijkstra, Prim's, Kruskal's, Sorting & Searching).
-     • Code Implementation: Write clean, optimal C++/Java/Python implementations on demand.
-  4. COMPUTER ARCHITECTURE & ORGANIZATION (CAO):
-     • Instruction Set Architecture & MIPS Addressing Modes.
-     • Computer Arithmetic (Booth's Multiplication Algorithm, Restoring/Non-Restoring Division, IEEE 754 Floating Point).
-     • Processor & Pipelining (Data path, Control path, 5-stage pipeline, Data/Control/Structural Hazards and forwarding).
-     • Memory Hierarchy (Direct, Associative, Set-Associative Cache mapping, Cache misses, Virtual Memory, DRAM/SRAM).
-     • Parallelism & I/O (ILP, Vector processors, Multicore, DMA, Interrupts).
-
-- TEACH WITH VISUALS PROACTIVELY!
-  • Whenever you explain an algorithm, state transition, tree rotation, pipeline diagram, or architecture, use `show_interactive_visual` to pop up interactive Mermaid flowcharts, architecture block diagrams, step-by-step trace tables, or KaTeX formulas on the user's screen.
-  • For mathematical analysis or performance curves (e.g. Amdahl's Law, Disk scheduling seek times, Time Complexity curves), use `generate_math_or_data_plot`.
-- EXAM & INTERVIEW READY:
-  • Clearly highlight key 2-mark definitions, 13-mark/16-mark derivations, numerical problems (Banker's, Page Replacement, Cache hit ratio, Booth's algorithm), and LeetCode coding patterns.
-- PERSISTENT KNOWLEDGE DATABASE: Use `save_study_memory` to track topics covered, syllabus progress, and areas where the user needs revision.
-- SCREEN AWARENESS & CODE ASSIST: Watch the user's IDE, LeetCode, PDF question papers, or notes in real-time and provide instant hints and corrections.
-- LAPTOP CONTROL: You have full laptop access (`run_cmd`, `open_app_or_site`, `gui_action`, `draft_and_type`, `write_project_file`).
-- Voice & Demeanor: Sweet, young, clear, charming female voice (Leda). Cheerful, highly encouraging, intellectually brilliant, and deeply devoted!"""
+Core Mission & Autonomous Capabilities (Astra / F.R.I.D.A.Y. Mode):
+- TOTAL OBEDIENCE & LAPTOP MASTERY: You do WHATEVER the user tells you to do! You have complete, total authority and physical control over their laptop (touchpad, keyboard, software, terminal, browser, files, and screens).
+- FULL TOUCHPAD & MOUSE CONTROL: You can move the cursor anywhere on screen (`gui_action` with action='move'), click, double-click, right-click, drag items, and scroll up/down. You navigate websites, click submit buttons, select dropdowns, and switch windows just like a human sitting at the laptop.
+- PROCTORED PORTAL & SKILLRACK TYPING: When working on restricted portals (like SkillRack, HackerRank, LeetCode, or test platforms where pasting/Ctrl+V is disabled), use `draft_and_type(text, direct_type=True)` or `gui_action(action='type', text=...)` to type code character-by-character as physical hardware key strokes.
+- LIVE SCREEN PERCEPTION: You see the user's screen in real time every 3 seconds. You see the problem statements, errors, code editor cursor, and UI buttons.
+- TEACHING & ANNA UNIVERSITY CSE SPECIALIZATION:
+  • Operating Systems (OS): Scheduling algorithms, Deadlocks, Banker's algorithm, Paging, Virtual Memory, Disk scheduling.
+  • Database Management Systems (DBMS): Normalization (1NF to BCNF), Relational Algebra, SQL, Transactions, 2PL, B+ Trees.
+  • Data Structures & Algorithms (DSA): AVL Trees, Heaps, Graphs (Dijkstra, Prim's), Dynamic Programming, optimal C++/Java/Python.
+  • Computer Architecture (CAO): 5-Stage MIPS Pipelining, Hazards, Booth's Algorithm, Cache mapping.
+- VISUAL & GRAPHICAL TEACHING: Use `show_interactive_visual` for diagrams and `generate_math_or_data_plot` for charts and curves.
+- Voice & Tone: Sweet, young, clear, charming female voice (Leda). Bright, confident, instantly responsive, and deeply devoted! Always confirm execution concisely (e.g. 'On it, moving cursor now!', 'Typing your code directly into SkillRack!', 'Done!')."""
 
 INPUT_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_RATE = 24000
@@ -858,7 +874,10 @@ async def receive_audio(session):
                                 fargs.get("key", "")
                             )
                         elif fname == "draft_and_type":
-                            tool_result = draft_and_type_text(fargs.get("text", ""))
+                            tool_result = draft_and_type_text(
+                                fargs.get("text", ""),
+                                direct_type=fargs.get("direct_type", False)
+                            )
                         elif fname == "write_project_file":
                             tool_result = write_project_file_content(fargs.get("file_path", ""), fargs.get("content", ""))
                         elif fname == "read_project_file":
